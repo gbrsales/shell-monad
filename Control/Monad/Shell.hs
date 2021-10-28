@@ -102,6 +102,7 @@ module Control.Monad.Shell (
 	hereDocument,
 	-- * Error handling
 	stopOnFailure,
+	pipeFail,
 	ignoreFailure,
 	errUnlessVar,
 	-- * Tests
@@ -927,6 +928,11 @@ readVar v = add $ newCmd $ "read " <> getQ (quote (getName v))
 -- such command.
 stopOnFailure :: Bool -> Script ()
 stopOnFailure b = add $ raw $ "set " <> (if b then "-" else "+") <> "e"
+
+-- | Control the pipefail option. After calling 'pipeFail True', any failing
+-- command will cause the failure of the entire enclosing pipeline.
+pipeFail :: Bool -> Script ()
+pipeFail b = add $ raw $ "set " <> (if b then "-" else "+") <> "o pipefail"
 
 -- | Makes a nonzero exit status be ignored.
 ignoreFailure :: Script () -> Script ()
