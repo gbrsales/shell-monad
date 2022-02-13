@@ -93,6 +93,7 @@ module Control.Monad.Shell (
 	-- * Redirection
 	RedirFile,
 	(|>),
+	(|$>),
 	(|>>),
 	(|<),
 	toStderr,
@@ -233,6 +234,8 @@ indent (Or e1 e2) = Or (indent e1) (indent e2)
 -- | Specifies a redirection.
 data RedirSpec
 	= RedirToFile Fd FilePath -- ^ redirect the fd to a file
+	| RedirToFileFromVar Fd (Quoted L.Text)
+	  -- ^ redirect to a file whose path is stored in a given variable
 	| RedirToFileAppend Fd FilePath -- ^ append to file
 	| RedirFromFile Fd FilePath -- ^ use a file as input
 	| RedirOutput Fd Fd -- ^ redirect first fd to the second
@@ -341,7 +344,9 @@ fmt multiline = go
 	go (Or e1 e2) = go e1 <> " || " <> go e2
 	go (Redir e r) = let use t = go e <> " " <> t in case r of
 		(RedirToFile fd f) ->
-			use $ redirFd fd (Just stdOutput) <> "> " <> getQ (quote (L.pack f))
+			use $ redirFd fd (Just stdOutput) <> "> " <> L.pack f
+		(RedirToFileFromVar fd f) ->
+			use $ redirFd fd (Just stdOutput) <> "> " <> getQ f
 		(RedirToFileAppend fd f) ->
 			use $ redirFd fd (Just stdOutput) <> ">> " <> getQ (quote (L.pack f))
 		(RedirFromFile fd f) ->
@@ -976,10 +981,11 @@ toSingleExp :: [Expr] -> Expr
 toSingleExp [e] = e
 toSingleExp l = Subshell L.empty l
 
-redir :: Script () -> RedirSpec -> Script ()
+redir :: Script () -> (Env -> RedirSpec) -> Script ()
 redir s r = do
 	e <- toSingleExp <$> runM s
-	add $ Redir e r
+	env <- getEnv
+	add $ Redir e (r env)
 
 -- | Any function that takes a RedirFile can be passed a
 -- a FilePath, in which case the default file descriptor will be redirected
@@ -1005,15 +1011,18 @@ fileRedir f deffd c = uncurry c (fromRedirFile deffd f)
 --
 -- > cmd "find" "/" |> "/dev/null"
 (|>) :: RedirFile f => Script () -> f -> Script ()
-s |> f = redir s (fileRedir f stdOutput RedirToFile)
+s |> f = redir s (const $ fileRedir f stdOutput RedirToFile)
+
+(|$>) :: Script () -> Term Var t -> Script ()
+s |$> v = redir s (RedirToFileFromVar stdOutput . Q. toTextParam v)
 
 -- | Appends to a file. (If file doesn't exist, it will be created.)
 (|>>) :: RedirFile f => Script () -> f -> Script ()
-s |>> f = redir s (fileRedir f stdOutput RedirToFileAppend)
+s |>> f = redir s (const $ fileRedir f stdOutput RedirToFileAppend)
 
 -- | Redirects standard input from a file.
 (|<) :: RedirFile f => Script () -> f -> Script ()
-s |< f = redir s (fileRedir f stdInput RedirFromFile)
+s |< f = redir s (const $ fileRedir f stdInput RedirFromFile)
 
 -- | Redirects a script's output to stderr.
 toStderr :: Script () -> Script ()
@@ -1025,7 +1034,7 @@ toStderr s = s &stdOutput>&stdError
 --
 -- > cmd "foo" &stdError>&stdOutput
 (>&) :: (Script (), Fd) -> Fd -> Script ()
-(s, fd1) >& fd2 = redir s (RedirOutput fd1 fd2)
+(s, fd1) >& fd2 = redir s (const $ RedirOutput fd1 fd2)
 
 -- | Redirects the first file descriptor to input from the second.
 --
@@ -1033,7 +1042,7 @@ toStderr s = s &stdOutput>&stdError
 --
 -- > cmd "foo" &stdInput<&Fd 42
 (<&) :: (Script (), Fd) -> Fd -> Script ()
-(s, fd1) <& fd2 = redir s (RedirInput fd1 fd2)
+(s, fd1) <& fd2 = redir s (const $ RedirInput fd1 fd2)
 
 -- | Helper for '>&' and '<&'
 (&) :: Script () -> Fd -> (Script (), Fd)
@@ -1041,7 +1050,7 @@ toStderr s = s &stdOutput>&stdError
 
 -- | Provides the Text as input to the Script, using a here-document.
 hereDocument :: Script () -> L.Text -> Script ()
-hereDocument s t = redir s (RedirHereDoc t)
+hereDocument s t = redir s (const $ RedirHereDoc t)
 
 -- | Creates a Script that checks a Test and exits true (0) or false (1).
 --
