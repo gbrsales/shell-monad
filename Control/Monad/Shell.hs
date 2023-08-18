@@ -40,6 +40,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Control.Monad.Shell (
 	-- * Core
@@ -115,6 +116,7 @@ module Control.Monad.Shell (
 	-- * Misc
 	comment,
 	readVar,
+	readVars,
 ) where
 
 import qualified Data.Text.Lazy as L
@@ -926,7 +928,14 @@ block word s = do
 
 -- | Fills a variable with a line read from stdin.
 readVar :: Term Var String -> Script ()
-readVar v = add $ newCmd $ "read " <> getQ (quote (getName v))
+readVar v = readVars [v]
+
+-- | Fill multiple variables by reading their values from stdin.
+readVars :: [Term Var String] -> Script ()
+readVars [] = error "needs at least one variable to fill"
+readVars vs =
+	let names = L.intercalate " " [getQ (quote (getName v)) | v <- vs]
+	in add $ newCmd $ "read -r " <> names
 
 -- | By default, shell scripts continue running past commands that exit
 -- nonzero. Use 'stopOnFailure True' to make the script stop on the first
