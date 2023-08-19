@@ -927,11 +927,11 @@ block word s = do
 	mapM_ (add . indent) =<< runM s
 
 -- | Fills a variable with a line read from stdin.
-readVar :: Term Var String -> Script ()
+readVar :: Term Var L.Text -> Script ()
 readVar v = readVars [v]
 
 -- | Fill multiple variables by reading their values from stdin.
-readVars :: [Term Var String] -> Script ()
+readVars :: [Term Var L.Text] -> Script ()
 readVars [] = error "needs at least one variable to fill"
 readVars vs =
 	let names = L.intercalate " " [getQ (quote (getName v)) | v <- vs]
