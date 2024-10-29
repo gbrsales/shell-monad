@@ -96,6 +96,7 @@ module Control.Monad.Shell (
 	(|>),
 	(|$>),
 	(|>>),
+	(/>),
 	(|<),
 	toStderr,
 	(>&),
@@ -1028,6 +1029,10 @@ s |$> v = redir s (RedirToFileFromVar stdOutput . Q. toTextParam v)
 -- | Appends to a file. (If file doesn't exist, it will be created.)
 (|>>) :: RedirFile f => Script () -> f -> Script ()
 s |>> f = redir s (const $ fileRedir f stdOutput RedirToFileAppend)
+
+-- | Redirects stderr to a file, overwriting any existing file.
+(/>) :: RedirFile f => Script () -> f -> Script ()
+s /> f = redir s (const $ fileRedir f stdError RedirToFile)
 
 -- | Redirects standard input from a file.
 (|<) :: RedirFile f => Script () -> f -> Script ()
